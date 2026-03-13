@@ -1,0 +1,109 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# ========================
+# Dependencies
+# ========================
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# ========================
+# Next.js Build Output
+# ========================
+/.next/
+/out/
+/build
+
+# ========================
+# Capacitor / Android
+# ========================
+# Android build artifacts are handled by android/.gitignore
+# Capacitor generated assets (copied at build time)
+/android/app/src/main/assets/public
+/android/app/src/main/assets/capacitor.config.json
+/android/app/src/main/assets/capacitor.plugins.json
+/android/app/src/main/res/xml/config.xml
+/android/capacitor-cordova-android-plugins
+
+# ========================
+# Testing & Coverage
+# ========================
+/coverage
+/.nyc_output
+
+# ========================
+# Environment & Secrets
+# ========================
+.env
+.env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+!.env.example
+
+# ========================
+# Logs
+# ========================
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+*.log
+logs/
+/android/build_log.txt
+/android/build_log_utf8.txt
+
+# ========================
+# OS Generated Files
+# ========================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ========================
+# IDE / Editor Files
+# ========================
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.swp
+
+# ========================
+# TypeScript
+# ========================
+*.tsbuildinfo
+next-env.d.ts
+
+# ========================
+# Package Manager Locks
+# (keep package-lock.json — remove below if you prefer not to commit it)
+# ========================
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# ========================
+# Misc
+# ========================
+*.pem
+.vercel
+.turbo
+.cache/
+*.local
