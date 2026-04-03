@@ -3,10 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3001",
+    "dev": "next dev",
     "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
+    "start": "next start"
   },
   "dependencies": {
     "@capacitor/android": "^8.2.0",
@@ -15,28 +14,15 @@
     "bcryptjs": "^3.0.3",
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^0.577.0",
-<<<<<<< HEAD
     "next": "^16.1.6",
     "react": "^19.2.3",
     "react-dom": "^19.2.3"
   },
-  
-
-=======
-    "next": "16.1.6",
-    "react": "19.2.3",
-    "react-dom": "19.2.3"
-  },
->>>>>>> 070265c (App version 1)
   "devDependencies": {
     "@capacitor/cli": "^8.2.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.1.6",
-    "tailwindcss": "^4",
-    "typescript": "^5"
+    "@types/react": "19.2.14",
+    "typescript": "6.0.2"
   }
 }
