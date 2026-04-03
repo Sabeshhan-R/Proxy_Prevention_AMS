@@ -20,17 +20,6 @@
 /build
 
 # ========================
-# Capacitor / Android
-# ========================
-# Android build artifacts are handled by android/.gitignore
-# Capacitor generated assets (copied at build time)
-/android/app/src/main/assets/public
-/android/app/src/main/assets/capacitor.config.json
-/android/app/src/main/assets/capacitor.plugins.json
-/android/app/src/main/res/xml/config.xml
-/android/capacitor-cordova-android-plugins
-
-# ========================
 # Testing & Coverage
 # ========================
 /coverage
@@ -56,8 +45,6 @@ yarn-error.log*
 .pnpm-debug.log*
 *.log
 logs/
-/android/build_log.txt
-/android/build_log_utf8.txt
 
 # ========================
 # OS Generated Files
@@ -89,13 +76,13 @@ desktop.ini
 # TypeScript
 # ========================
 *.tsbuildinfo
-next-env.d.ts
 
 # ========================
 # Package Manager Locks
 # (keep package-lock.json — remove below if you prefer not to commit it)
 # ========================
 # package-lock.json
+package-lock.json
 # yarn.lock
 # pnpm-lock.yaml
 
