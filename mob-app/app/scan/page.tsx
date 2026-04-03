@@ -2,83 +2,87 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import {
-  ArrowLeft,
-  Scan,
-  ShieldAlert,
-  MapPin,
-  Smartphone,
-  CheckCircle2,
-  Fingerprint,
-  CameraOff
-} from "lucide-react";
 import { Html5Qrcode } from "html5-qrcode";
+import {
+  ArrowLeft, Scan, ShieldAlert, MapPin, Smartphone,
+  CheckCircle2, Fingerprint, CameraOff, AlertCircle, Loader2
+} from "lucide-react";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+
+type ScanState = "scanning" | "checking" | "success" | "error";
+
+interface ScanResult {
+  message: string;
+  attendance_id?: string;
+  marked_at?: string;
+}
 
 export default function QRScannerPage() {
-  const [result, setResult] = useState<null | 'success' | 'checking'>(null);
+  const [scanState, setScanState] = useState<ScanState>("scanning");
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [deviceId, setDeviceId] = useState<string>("");
+  const [user, setUser] = useState<any>(null);
+
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const isMounted = useRef(true);
 
+  // Load user session from localStorage
   useEffect(() => {
-    let isMounted = true;
+    const savedUser = localStorage.getItem("ams_user");
+    const savedDevice = localStorage.getItem("ams_device_id");
+    if (savedUser) setUser(JSON.parse(savedUser));
+    if (savedDevice) setDeviceId(savedDevice);
+  }, []);
+
+  // ── Camera init ───────────────────────────────────────────────────────────
+  useEffect(() => {
+    isMounted.current = true;
 
     const startScanner = async () => {
-      if (!isMounted) return;
+      if (!isMounted.current) return;
 
-      const isSecure = window.isSecureContext || window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-      
+      const isSecure =
+        window.isSecureContext ||
+        window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1";
+
       if (!isSecure) {
-        setCameraError("Insecure Context: Camera access requires HTTPS unless on localhost.");
+        setCameraError("Camera requires HTTPS. Try from localhost.");
         return;
       }
 
       try {
-        // Force cleanup of the container
-        if (containerRef.current) {
-          containerRef.current.innerHTML = "";
-        }
-
-        // Delay slightly to let DOM settle after clearing
-        await new Promise(resolve => setTimeout(resolve, 300));
-        if (!isMounted) return;
+        if (containerRef.current) containerRef.current.innerHTML = "";
+        await new Promise(r => setTimeout(r, 300));
+        if (!isMounted.current) return;
 
         const scanner = new Html5Qrcode("reader");
         scannerRef.current = scanner;
 
-        const config = { 
-          fps: 15, 
-          // We set qrbox to a specific size but we'll hide the library's default UI via CSS
-          qrbox: { width: 250, height: 250 },
-          aspectRatio: 1.0
-        };
-
         await scanner.start(
-          { facingMode: "environment" }, 
-          config, 
+          { facingMode: "environment" },
+          { fps: 15, qrbox: { width: 240, height: 240 }, aspectRatio: 1.0 },
           (decodedText) => {
-            if (scannerRef.current) {
+            // QR found — stop camera and process
+            if (scannerRef.current?.isScanning) {
               scannerRef.current.stop().then(() => {
-                if (isMounted) {
-                  setResult('checking');
-                  setTimeout(() => {
-                    if (isMounted) setResult('success');
-                  }, 2000);
-                }
-              }).catch(err => console.error(err));
+                if (isMounted.current) handleQRPayload(decodedText);
+              }).catch(console.error);
             }
           },
-          () => {} // Ignore frame errors
+          () => {} // ignore per-frame errors
         );
       } catch (err: any) {
-        console.error("Scanner Error:", err);
-        if (isMounted) {
-          const errStr = err?.toString().toLowerCase();
-          if (errStr.includes("permission") || errStr.includes("notallowed")) {
-            setCameraError("Camera permission denied.");
-          } else {
-            setCameraError("Scanner initialization failed.");
-          }
+        if (!isMounted.current) return;
+        const errStr = err?.toString().toLowerCase() ?? "";
+        if (errStr.includes("permission") || errStr.includes("notallowed")) {
+          setCameraError("Camera permission denied. Please allow camera access.");
+        } else {
+          setCameraError("Could not start scanner. Try reloading the page.");
         }
       }
     };
@@ -86,94 +90,191 @@ export default function QRScannerPage() {
     startScanner();
 
     return () => {
-      isMounted = false;
-      if (scannerRef.current) {
-        const scannerInstance = scannerRef.current;
-        if (scannerInstance.isScanning) {
-          scannerInstance.stop().then(() => {
-            scannerInstance.clear();
-          }).catch(err => console.error("Cleanup Error:", err));
-        }
+      isMounted.current = false;
+      if (scannerRef.current?.isScanning) {
+        scannerRef.current.stop().then(() => scannerRef.current?.clear()).catch(console.error);
         scannerRef.current = null;
       }
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleMockScan = () => {
-    setResult('checking');
-    setTimeout(() => setResult('success'), 2000);
+  // ── Process QR payload ────────────────────────────────────────────────────
+  const handleQRPayload = async (raw: string) => {
+    setScanState("checking");
+    setErrorMsg(null);
+
+    try {
+      let payload: any;
+      try {
+        payload = JSON.parse(raw);
+      } catch {
+        setErrorMsg("Invalid QR code. Not an AMS attendance token.");
+        setScanState("error");
+        return;
+      }
+
+      const { student_id, session_id, token } = payload;
+
+      if (!student_id || !session_id || !token) {
+        setErrorMsg("QR code is missing required fields.");
+        setScanState("error");
+        return;
+      }
+
+      if (!deviceId) {
+        setErrorMsg("No device ID found. Please log in again.");
+        setScanState("error");
+        return;
+      }
+
+      const response = await fetch(`${API_URL}/api/mark-attendance`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "X-Client-Type": "mobile"
+        },
+        body: JSON.stringify({ student_id, session_id, token, device_id: deviceId }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setScanResult({ message: data.message, attendance_id: data.attendance_id, marked_at: data.marked_at });
+        setScanState("success");
+      } else {
+        // Map specific error codes to user-friendly messages
+        const errMap: Record<number, string> = {
+          401: "Device mismatch. Use your registered device.",
+          403: "QR code expired or session has ended. Ask teacher to rescan.",
+          409: "Attendance already marked for this session.",
+          404: "Session or student not found.",
+        };
+        setErrorMsg(errMap[response.status] || data.error || "Scan failed. Please try again.");
+        setScanState("error");
+      }
+    } catch {
+      setErrorMsg("Network error. Please check your internet connection and try again.");
+      setScanState("error");
+    }
   };
 
+  // ── Retry: restart scanner ────────────────────────────────────────────────
+  const handleRetry = () => {
+    setScanState("scanning");
+    setErrorMsg(null);
+    setScanResult(null);
+    window.location.reload(); // simplest way to fully reset camera state
+  };
+
+  // ── Mock scan for dev (no camera) ─────────────────────────────────────────
+  const handleMockScan = () => {
+    const mockPayload = JSON.stringify({
+      student_id: user?.uuid,
+      session_id: "00000000-0000-0000-0000-000000000000",
+      token: "MOCK_TOKEN",
+      device_id: deviceId,
+    });
+    handleQRPayload(mockPayload);
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Render
+  // ─────────────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col min-h-screen bg-slate-950 font-sans text-white">
       {/* Header */}
       <div className="p-6 flex items-center justify-between relative z-10 border-b border-slate-900 bg-slate-950/50 backdrop-blur-md">
-        <Link
-          href="/dashboard"
-          className="h-10 w-10 rounded-xl bg-slate-900 flex items-center justify-center border border-slate-800 active:scale-95 transition-all text-white"
-        >
+        <Link href="/dashboard" className="h-10 w-10 rounded-xl bg-slate-900 flex items-center justify-center border border-slate-800 active:scale-95 transition-all">
           <ArrowLeft className="h-5 w-5" />
         </Link>
-        <h2 className="text-md font-bold tracking-tight">Scanner</h2>
+        <h2 className="text-md font-bold tracking-tight">QR Scanner</h2>
         <div className="h-10 w-10" />
       </div>
 
       <main className="flex-1 flex flex-col items-center justify-center px-8 relative overflow-hidden">
-        {result === 'success' ? (
-          <div className="z-20 flex flex-col items-center space-y-8 animate-in zoom-in duration-500 w-full max-w-sm">
+
+        {/* ── SUCCESS ────────────────────────────────────── */}
+        {scanState === "success" && (
+          <div className="z-20 flex flex-col items-center space-y-6 animate-in zoom-in duration-500 w-full max-w-sm">
             <div className="relative">
               <div className="absolute inset-0 bg-emerald-500 blur-3xl opacity-20" />
               <div className="h-24 w-24 rounded-full bg-emerald-500 flex items-center justify-center shadow-[0_0_40px_rgba(16,185,129,0.3)] relative">
                 <CheckCircle2 className="h-12 w-12 text-white" />
               </div>
             </div>
-
-            <div className="text-center space-y-2">
-              <h3 className="text-3xl font-bold text-white">Attendance Marked!</h3>
-              <p className="text-slate-400 font-medium">Verified for Lab-04 Engineering</p>
+            <div className="text-center space-y-1">
+              <h3 className="text-3xl font-bold">Attendance Marked!</h3>
+              <p className="text-slate-400 font-medium">{scanResult?.message}</p>
             </div>
-
-            <div className="bg-slate-900 border border-slate-800 rounded-[2rem] p-6 w-full space-y-4">
-              <div className="flex items-center gap-4 p-3 bg-slate-950/50 rounded-2xl border border-slate-800/50">
-                <MapPin className="h-5 w-5 text-emerald-500" />
-                <div className="space-y-0.5">
-                  <p className="text-[10px] text-slate-500 uppercase font-bold">Network Location</p>
-                  <p className="text-sm font-bold text-slate-200">Lab IP: 192.168.1.104</p>
+            <div className="bg-slate-900 border border-slate-800 rounded-[2rem] p-6 w-full space-y-3">
+              {scanResult?.marked_at && (
+                <div className="flex items-center gap-4 p-3 bg-slate-950/50 rounded-2xl border border-slate-800/50">
+                  <Fingerprint className="h-5 w-5 text-emerald-500" />
+                  <div>
+                    <p className="text-[10px] text-slate-500 uppercase font-bold">Marked At</p>
+                    <p className="text-sm font-bold text-slate-200">
+                      {new Date(scanResult.marked_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </p>
+                  </div>
                 </div>
-              </div>
+              )}
               <div className="flex items-center gap-4 p-3 bg-slate-950/50 rounded-2xl border border-slate-800/50">
                 <Smartphone className="h-5 w-5 text-emerald-500" />
-                <div className="space-y-0.5">
-                  <p className="text-[10px] text-slate-500 uppercase font-bold">Device Token</p>
-                  <p className="text-sm font-bold text-slate-200">ID: dev_8291x_locked</p>
+                <div>
+                  <p className="text-[10px] text-slate-500 uppercase font-bold">Device</p>
+                  <p className="text-sm font-bold text-slate-200 font-mono">{deviceId.slice(0, 20)}…</p>
                 </div>
               </div>
               <div className="flex items-center gap-4 p-3 bg-slate-950/50 rounded-2xl border border-slate-800/50">
-                <Fingerprint className="h-5 w-5 text-emerald-500" />
-                <div className="space-y-0.5">
-                  <p className="text-[10px] text-slate-500 uppercase font-bold">Identity Verification</p>
-                  <p className="text-sm font-bold text-slate-200">Biometric Confirmation</p>
+                <MapPin className="h-5 w-5 text-emerald-500" />
+                <div>
+                  <p className="text-[10px] text-slate-500 uppercase font-bold">Student</p>
+                  <p className="text-sm font-bold text-slate-200">{user?.name || "—"}</p>
                 </div>
               </div>
             </div>
-
-            <Link
-              href="/dashboard"
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-2xl text-center shadow-lg shadow-blue-600/20 transition-all active:scale-[0.98]"
-            >
+            <Link href="/dashboard" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-2xl text-center shadow-lg shadow-blue-600/20 transition-all active:scale-[0.98]">
               Return to Dashboard
             </Link>
           </div>
-        ) : (
-          <div className="z-20 space-y-12 flex flex-col items-center w-full max-w-sm">
-            {/* Scanner Frame */}
+        )}
+
+        {/* ── ERROR ─────────────────────────────────────── */}
+        {scanState === "error" && (
+          <div className="z-20 flex flex-col items-center space-y-6 animate-in zoom-in duration-500 w-full max-w-sm text-center">
+            <div className="h-20 w-20 rounded-full bg-red-500/10 flex items-center justify-center border border-red-500/20">
+              <AlertCircle className="h-10 w-10 text-red-500" />
+            </div>
+            <div>
+              <h3 className="text-2xl font-bold text-white mb-2">Scan Failed</h3>
+              <p className="text-slate-400 text-sm">{errorMsg}</p>
+            </div>
+            <button onClick={handleRetry} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-2xl shadow-lg transition-all active:scale-[0.98]">
+              Try Again
+            </button>
+            <Link href="/dashboard" className="text-sm text-slate-400 hover:text-white underline">
+              Back to Dashboard
+            </Link>
+          </div>
+        )}
+
+        {/* ── CHECKING ──────────────────────────────────── */}
+        {scanState === "checking" && (
+          <div className="z-20 flex flex-col items-center space-y-6 animate-in fade-in duration-300">
+            <Loader2 className="h-16 w-16 text-blue-500 animate-spin" />
+            <div className="text-center">
+              <h3 className="text-2xl font-bold">Verifying…</h3>
+              <p className="text-slate-400 text-sm">Checking token and session</p>
+            </div>
+          </div>
+        )}
+
+        {/* ── SCANNING ──────────────────────────────────── */}
+        {scanState === "scanning" && (
+          <div className="z-20 space-y-10 flex flex-col items-center w-full max-w-sm">
+            {/* Scanner frame */}
             <div className="relative h-80 w-80">
-              {/* Camera Feed Container */}
-              <div 
-                id="reader" 
-                ref={containerRef}
-                className="absolute inset-0 rounded-[2.5rem] overflow-hidden bg-slate-900 border border-slate-800 shadow-2xl"
-              >
+              <div id="reader" ref={containerRef} className="absolute inset-0 rounded-[2.5rem] overflow-hidden bg-slate-900 border border-slate-800 shadow-2xl">
                 {cameraError && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 text-center p-6 space-y-4">
                     <div className="h-16 w-16 rounded-full bg-red-500/10 flex items-center justify-center">
@@ -181,61 +282,52 @@ export default function QRScannerPage() {
                     </div>
                     <div className="space-y-2">
                       <p className="font-bold text-white px-2 leading-tight">{cameraError}</p>
-                      <p className="text-[10px] text-slate-500 leading-relaxed px-4">
-                        Modern browsers require <span className="text-blue-500 font-bold underline">HTTPS</span> for camera access. If you're on a mobile device via IP, camera features are blocked by default.
+                      <p className="text-[10px] text-slate-500 px-4">
+                        Browsers require <span className="text-blue-500 font-bold">HTTPS</span> for camera.
                       </p>
                     </div>
                     <div className="flex flex-col gap-2 w-full px-8">
-                      <button
-                        onClick={() => window.location.reload()}
-                        className="bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold py-3 px-6 rounded-xl border border-slate-700 transition-all active:scale-95"
-                      >
-                        Retry Scanner
+                      <button onClick={() => window.location.reload()} className="bg-slate-800 text-white text-xs font-bold py-3 px-6 rounded-xl border border-slate-700 transition-all active:scale-95">
+                        Retry Camera
                       </button>
-                      <button
-                        onClick={handleMockScan}
-                        className="bg-blue-600/10 hover:bg-blue-600/20 text-blue-500 text-[10px] font-bold py-2 px-6 rounded-xl border border-blue-500/20 transition-all active:scale-95 uppercase tracking-wider"
-                      >
-                        Mock Scan (Dev Fallback)
+                      <button onClick={handleMockScan} className="bg-blue-600/10 text-blue-500 text-[10px] font-bold py-2 px-6 rounded-xl border border-blue-500/20 transition-all active:scale-95 uppercase tracking-wider">
+                        Mock Scan (Dev Mode)
                       </button>
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* Overlays */}
+              {/* Corner overlays */}
               <div className="absolute inset-0 pointer-events-none">
-                {/* Animated Corners */}
                 <div className="absolute top-0 left-0 w-16 h-16 border-t-4 border-l-4 border-blue-500 rounded-tl-[2.5rem]" />
                 <div className="absolute top-0 right-0 w-16 h-16 border-t-4 border-r-4 border-blue-500 rounded-tr-[2.5rem]" />
                 <div className="absolute bottom-0 left-0 w-16 h-16 border-b-4 border-l-4 border-blue-500 rounded-bl-[2.5rem]" />
                 <div className="absolute bottom-0 right-0 w-16 h-16 border-b-4 border-r-4 border-blue-500 rounded-br-[2.5rem]" />
-
-                {/* Scan Line */}
                 {!cameraError && (
                   <div className="absolute top-4 left-8 right-8 h-1 bg-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.5)] animate-[scan_2.5s_ease-in-out_infinite] blur-[0.5px] rounded-full z-10" />
                 )}
               </div>
             </div>
 
-            <div className="text-center space-y-3 px-4">
+            <div className="text-center space-y-2 px-4">
               <h3 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-b from-white to-slate-400">
-                {result === 'checking' ? 'Authorizing...' : 'Scanning Presence'}
+                Scan QR Code
               </h3>
-              <p className="text-sm text-slate-500 leading-relaxed font-medium">
-                Aim your camera at the lab screen's QR code to verify your seat.
+              <p className="text-sm text-slate-500 font-medium">
+                Point your camera at the QR code on the lab PC screen.
               </p>
             </div>
 
-            {/* Security Alert */}
+            {/* Anti-proxy badge */}
             <div className="flex items-center gap-4 bg-red-500/10 border border-red-500/20 px-6 py-4 rounded-2xl text-red-500 w-full">
               <div className="h-10 w-10 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
                 <ShieldAlert className="h-5 w-5" />
               </div>
-              <div className="space-y-0.5">
-                <p className="text-[10px] font-bold uppercase tracking-wider">Anti-Proxy System</p>
-                <p className="text-[11px] font-medium leading-tight opacity-80">
-                  Real-time environmental scanning active. Fraud will be flagged.
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider">Anti-Proxy Active</p>
+                <p className="text-[11px] font-medium opacity-80 leading-tight">
+                  Device ID is verified server-side. Proxy attempts will be rejected.
                 </p>
               </div>
             </div>
@@ -244,26 +336,11 @@ export default function QRScannerPage() {
       </main>
 
       <style jsx global>{`
-        #reader video {
-          object-fit: cover !important;
-          width: 100% !important;
-          height: 100% !important;
-          border-radius: 2.5rem !important;
-        }
-        /* Hide library's default UI elements */
-        #reader__scan_region {
-          background: transparent !important;
-        }
-        #reader__scan_region > div {
-          display: none !important;
-        }
-        #reader img {
-          display: none !important;
-        }
-        @keyframes scan {
-          0%, 100% { top: 15%; opacity: 0.3; }
-          50% { top: 80%; opacity: 0.8; }
-        }
+        #reader video { object-fit: cover !important; width: 100% !important; height: 100% !important; border-radius: 2.5rem !important; }
+        #reader__scan_region { background: transparent !important; }
+        #reader__scan_region > div { display: none !important; }
+        #reader img { display: none !important; }
+        @keyframes scan { 0%, 100% { top: 15%; opacity: 0.3; } 50% { top: 80%; opacity: 0.8; } }
       `}</style>
     </div>
   );
