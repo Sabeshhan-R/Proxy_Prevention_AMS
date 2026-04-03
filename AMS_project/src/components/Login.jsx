@@ -1,34 +1,66 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
-import { LogIn, GraduationCap, Users, Shield } from 'lucide-react';
+import { LogIn, GraduationCap, Users, Shield, Mail, Lock } from 'lucide-react';
 
 const Login = () => {
   const { login } = useAuth();
-  const navigate = useNavigate();
+  const router = useRouter();
 
   const [role, setRole] = useState('student');
-  const [email, setEmail] = useState('student@ams.edu');
-  const [password, setPassword] = useState('password123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [networkStatus, setNetworkStatus] = useState({ checked: false, valid: false, ip: '' });
+
+  // Early network check for students
+  const checkNetwork = async () => {
+    try {
+      const res = await fetch('/api/validate-lab-network');
+      const data = await res.json();
+      setNetworkStatus({ checked: true, valid: data.valid, ip: data.ip });
+    } catch {
+      setNetworkStatus({ checked: true, valid: false, ip: 'unknown' });
+    }
+  };
 
   const switchRole = (r) => {
     setRole(r);
     setError('');
-    setEmail(r === 'teacher' ? 'teacher@ams.edu' : 'student@ams.edu');
-    setPassword('password123');
+    if (r === 'student') {
+      checkNetwork();
+    }
   };
 
-  const handleSubmit = (e) => {
+  useEffect(() => {
+    if (role === 'student') checkNetwork();
+  }, [role]);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
-    setTimeout(() => {
-      const ok = login({ email, password, role });
-      if (ok) navigate(role === 'teacher' ? '/teacher' : '/student');
-      else { setError('Invalid credentials. Please try again.'); setLoading(false); }
-    }, 700);
+
+    // Re-check network if student
+    if (role === 'student') {
+      await checkNetwork();
+    }
+
+    try {
+      const result = await login({ email, password, role });
+      if (result.success) {
+        router.push(role === 'teacher' ? '/teacher' : '/student');
+      } else {
+        setError(result.error || 'Invalid credentials. Please try again.');
+        setLoading(false);
+      }
+    } catch (err) {
+      setError(err.message);
+      setLoading(false);
+    }
   };
 
   return (
@@ -79,26 +111,47 @@ const Login = () => {
           </div>
         )}
 
+        {role === 'student' && networkStatus.checked && !networkStatus.valid && (
+          <div style={{ marginBottom: '18px', padding: '14px', borderRadius: '12px', background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.2)', textAlign: 'center' }}>
+            <p style={{ color: '#FCA5A5', fontSize: '0.8125rem', fontWeight: 600, marginBottom: '4px' }}>Unauthorized Network</p>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', lineHeight: 1.4 }}>Only Lab PCs can access the student portal. <br/> Your IP: <code style={{ color: '#FCA5A5' }}>{networkStatus.ip}</code></p>
+          </div>
+        )}
+
+        {role === 'student' && networkStatus.checked && networkStatus.valid && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '18px', padding: '8px', borderRadius: '8px', background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.2)' }}>
+            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10B981', boxShadow: '0 0 8px #10B981' }} />
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#34D399' }}>Verified Lab Network</span>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label className="form-label" htmlFor="email">Email Address</label>
-            <input id="email" type="email" className="form-input" placeholder="Enter email" value={email} onChange={e => setEmail(e.target.value)} required />
+            <div style={{ position: 'relative' }}>
+              <Mail size={16} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-muted)' }} />
+              <input id="email" type="email" className="form-input" style={{ paddingLeft: '40px' }} placeholder="Enter email" value={email} onChange={e => setEmail(e.target.value)} required />
+            </div>
           </div>
           <div className="form-group" style={{ marginBottom: '28px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
               <label className="form-label" style={{ margin: 0 }} htmlFor="password">Password</label>
               <a href="#" style={{ fontSize: '0.78rem', color: '#818CF8', textDecoration: 'none' }}>Forgot?</a>
             </div>
-            <input id="password" type="password" className="form-input" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required />
+            <div style={{ position: 'relative' }}>
+              <Lock size={16} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-muted)' }} />
+              <input id="password" type="password" className="form-input" style={{ paddingLeft: '40px' }} placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required />
+            </div>
           </div>
           <button type="submit" className="btn btn-primary" disabled={loading} style={{ width: '100%', padding: '13px', fontSize: '0.9375rem' }}>
             {loading ? 'Signing in…' : <><LogIn size={18} /> Sign In</>}
           </button>
         </form>
 
-        <p style={{ textAlign: 'center', marginTop: '20px', fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-          Demo: <span style={{ color: 'var(--text-sub)' }}>teacher@ams.edu</span> or <span style={{ color: 'var(--text-sub)' }}>student@ams.edu</span>
+        <p style={{ textAlign: 'center', marginTop: '20px', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
+          Don't have an account? <a href="/signup" style={{ color: '#818CF8', textDecoration: 'none', fontWeight: 600 }}>Create One</a>
         </p>
+
       </div>
     </div>
   );
