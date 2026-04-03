@@ -4,7 +4,7 @@ CREATE TYPE attendance_status AS ENUM ('Present','Absent');
 CREATE TYPE od_status AS ENUM ('Pending','Approved','Rejected');
 CREATE TYPE user_type_enum AS ENUM ('Student','Teacher');
 
-CREATE TABLE Student (
+CREATE TABLE student (
   student_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name VARCHAR(100) NOT NULL,
   reg_no VARCHAR(50) UNIQUE NOT NULL,
@@ -20,7 +20,7 @@ CREATE TABLE Student (
 
 CREATE INDEX idx_student_device ON Student(device_id);
 
-CREATE TABLE Teacher (
+CREATE TABLE teacher (
   teacher_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name VARCHAR(100) NOT NULL,
   email VARCHAR(100) UNIQUE NOT NULL,
@@ -31,7 +31,7 @@ CREATE TABLE Teacher (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE Session (
+CREATE TABLE session (
   session_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   teacher_id UUID REFERENCES Teacher(teacher_id) ON DELETE CASCADE,
   lab_id VARCHAR(50),
@@ -42,7 +42,7 @@ CREATE TABLE Session (
 
 CREATE INDEX idx_session_teacher ON Session(teacher_id);
 
-CREATE TABLE QR_Token (
+CREATE TABLE qR_token (
   token_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   student_id UUID REFERENCES Student(student_id) ON DELETE CASCADE,
   session_id UUID REFERENCES Session(session_id) ON DELETE CASCADE,
@@ -58,7 +58,7 @@ CREATE TABLE QR_Token (
 CREATE INDEX idx_qr_token ON QR_Token(token);
 CREATE INDEX idx_qr_session ON QR_Token(session_id);
 
-CREATE TABLE Attendance (
+CREATE TABLE attendance (
   attendance_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   student_id UUID REFERENCES Student(student_id) ON DELETE CASCADE,
   session_id UUID REFERENCES Session(session_id) ON DELETE CASCADE,
@@ -73,7 +73,7 @@ CREATE TABLE Attendance (
 
 CREATE INDEX idx_attendance_student ON Attendance(student_id);
 
-CREATE TABLE OD_Request (
+CREATE TABLE od_request (
   od_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   student_id UUID REFERENCES Student(student_id) ON DELETE CASCADE,
   from_date DATE NOT NULL,
@@ -91,7 +91,7 @@ CREATE TABLE OD_Request (
 
 CREATE INDEX idx_od_student ON OD_Request(student_id);
 
-CREATE TABLE Logs (
+CREATE TABLE logs (
   log_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID,
   user_type user_type_enum,
@@ -108,11 +108,11 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER update_student_timestamp
-BEFORE UPDATE ON Student
+BEFORE UPDATE ON student
 FOR EACH ROW
 EXECUTE FUNCTION update_timestamp();
 
 CREATE TRIGGER update_teacher_timestamp
-BEFORE UPDATE ON Teacher
+BEFORE UPDATE ON teacher
 FOR EACH ROW
 EXECUTE FUNCTION update_timestamp();
