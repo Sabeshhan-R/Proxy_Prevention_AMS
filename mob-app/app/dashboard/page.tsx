@@ -16,9 +16,19 @@ import {
 
 export default function StudentDashboard() {
   const router = useRouter();
+  const [user, setUser] = React.useState<any>(null);
+
+  React.useEffect(() => {
+    const saved = localStorage.getItem("ams_user");
+    if (saved) {
+      setUser(JSON.parse(saved));
+    } else {
+      router.push("/auth/login"); // not logged in
+    }
+  }, [router]);
 
   const handleLogout = () => {
-    // Simulate logout
+    localStorage.removeItem("ams_user");
     router.push("/auth/login");
   };
   return (
@@ -51,9 +61,9 @@ export default function StudentDashboard() {
           <div className="relative z-10 space-y-6">
             <div className="space-y-1">
               <p className="text-blue-100/70 text-sm font-semibold uppercase tracking-wider">Student Profile</p>
-              <h2 className="text-3xl font-extrabold">Sabeshhan G</h2>
+              <h2 className="text-3xl font-extrabold">{user?.name || "—"}</h2>
               <p className="text-xs font-mono bg-white/10 w-fit px-3 py-1 rounded-lg border border-white/10 font-bold">
-                REG: 2024CS088
+                REG: {user?.id || "—"}
               </p>
             </div>
             
