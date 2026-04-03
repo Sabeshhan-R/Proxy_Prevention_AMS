@@ -1,3 +1,5 @@
+'use client';
+
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAttendance } from '../context/AttendanceContext';
@@ -5,7 +7,7 @@ import { LogOut, ScanLine, ClipboardList, CheckSquare, UserCheck, Users, Clock, 
 
 const TeacherDashboard = () => {
   const { user, logout } = useAuth();
-  const { session, markedStudents, startSession, endSession } = useAttendance();
+  const { session, markedStudents, startSession, endSession, loading, sessionError } = useAttendance();
   const [activeTab, setActiveTab] = useState('attendance');
   const [sessionTimer, setSessionTimer] = useState(120); // 2 minutes countdown
 
@@ -18,22 +20,22 @@ const TeacherDashboard = () => {
 
   const [previewId, setPreviewId] = useState(null); // tracks which OD letter is being previewed
 
-  // Countdown timer - synced to session expiry
+  // Countdown timer — driven by real session.expires_at from backend
   useEffect(() => {
     let interval;
-    if (session) {
-      setSessionTimer(120);
-      interval = setInterval(() => {
-        setSessionTimer(prev => {
-          if (prev <= 1) { clearInterval(interval); return 0; }
-          return prev - 1;
-        });
-      }, 1000);
+    if (session?.expires_at) {
+      const tick = () => {
+        const remaining = Math.max(0, Math.floor((new Date(session.expires_at) - Date.now()) / 1000));
+        setSessionTimer(remaining);
+        if (remaining <= 0) clearInterval(interval);
+      };
+      tick();
+      interval = setInterval(tick, 1000);
     } else {
       setSessionTimer(120);
     }
     return () => clearInterval(interval);
-  }, [session]);
+  }, [session?.expires_at]);
 
   const handleOdAction = (id, action) => {
     setOdRequests(reqs => reqs.map(r => r.id === id ? { ...r, status: action } : r));
@@ -51,7 +53,7 @@ const TeacherDashboard = () => {
   const pendingCount = odRequests.filter(r => r.status === 'pending').length;
   const markedCount = markedStudents?.length || 0;
   const totalStudents = 64;
-  const timerPct = (sessionTimer / 120) * 100;
+  const timerPct = sessionTimer > 0 ? (sessionTimer / 120) * 100 : 0;
   const timerColor = sessionTimer > 60 ? '#10B981' : sessionTimer > 30 ? '#F59E0B' : '#EF4444';
 
   return (
@@ -156,9 +158,15 @@ const TeacherDashboard = () => {
                   <p style={{ color: 'var(--text-sub)', marginBottom: '32px', maxWidth: '400px', margin: '0 auto 32px' }}>
                     Click below to begin. Students will see a unique QR code on their devices which they can present to the lab kiosk or scanner.
                   </p>
+                  {sessionError && (
+                    <div style={{ margin: '0 auto 20px', padding: '10px 14px', borderRadius: '8px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: '#FCA5A5', fontSize: '0.85rem', maxWidth: '400px' }}>
+                      {sessionError}
+                    </div>
+                  )}
                   <button className="btn btn-primary" style={{ padding: '14px 40px', fontSize: '1rem' }}
-                    onClick={() => startSession('Computer Networks CS304')}>
-                    <ScanLine size={18} /> Start Attendance
+                    onClick={() => startSession(2)}
+                    disabled={loading}>
+                    {loading ? 'Starting...' : <><ScanLine size={18} /> Start Attendance</>}
                   </button>
                 </div>
               ) : (
@@ -166,12 +174,18 @@ const TeacherDashboard = () => {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
                     <div>
                       <h2 style={{ fontSize: '1.375rem', fontWeight: 700, marginBottom: '4px' }}>Live Session Active</h2>
-                      <p style={{ color: 'var(--text-sub)', fontSize: '0.875rem' }}>Students are being prompted to show their QR codes</p>
+                      <p style={{ color: 'var(--text-sub)', fontSize: '0.875rem' }}>Students are prompted to scan their QR codes</p>
                     </div>
-                    <span className="badge badge-success" style={{ padding: '6px 14px', fontSize: '0.8125rem' }}>
-                      <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#10B981', display: 'inline-block', animation: 'pulseRing 2s infinite' }}></span>
-                      Session Active
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span className="badge badge-success" style={{ padding: '6px 14px', fontSize: '0.8125rem' }}>
+                        <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#10B981', display: 'inline-block', animation: 'pulseRing 2s infinite' }}></span>
+                        &nbsp;Active
+                      </span>
+                      <button className="btn btn-outline" style={{ padding: '6px 14px', fontSize: '0.8125rem', borderColor: 'rgba(239,68,68,0.4)', color: '#F87171' }}
+                        onClick={endSession}>
+                        End Session
+                      </button>
+                    </div>
                   </div>
 
                   {/* Progress bar */}
