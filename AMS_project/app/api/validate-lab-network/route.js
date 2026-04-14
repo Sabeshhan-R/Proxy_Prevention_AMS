@@ -1,3 +1,4 @@
+
 import { NextResponse } from 'next/server';
 
 /**
@@ -12,7 +13,7 @@ export async function GET(req) {
   const LAB_PUBLIC_IP = process.env.LAB_STATIC_IP || 'unknown'; 
   
   const isValid = isLocalhost || (remoteIp === LAB_PUBLIC_IP) || (process.env.ALLOW_ALL_IPS === 'true');
-
+  
   return NextResponse.json({
     valid: isValid,
     ip: remoteIp,

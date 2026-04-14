@@ -9,30 +9,25 @@ const TeacherDashboard = () => {
   const { user, logout } = useAuth();
   const { session, markedStudents, startSession, endSession, loading, sessionError } = useAttendance();
   const [activeTab, setActiveTab] = useState('attendance');
-  const [sessionTimer, setSessionTimer] = useState(120); // 2 minutes countdown
+  const [sessionTimer, setSessionTimer] = useState(1800); // 30 minutes countdown (1800s)
 
-  // Mock OD Requests
-  const [odRequests, setOdRequests] = useState([
-    { id: 1, studentName: 'Alice Johnson', rollNo: '21CS101', reason: 'Hackathon Participation', date: '2026-03-10', status: 'pending', letterUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf', letterName: 'hackathon_permission.pdf' },
-    { id: 2, studentName: 'Bob Smith', rollNo: '21CS102', reason: 'Medical Checkup', date: '2026-03-09', status: 'pending', letterUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf', letterName: 'medical_certificate.pdf' },
-    { id: 3, studentName: 'Carol White', rollNo: '21CS103', reason: 'Sports Event', date: '2026-03-10', status: 'approved', letterUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf', letterName: 'sports_od_letter.pdf' },
-  ]);
+  // Real OD Requests (to be fetched from API)
+  const [odRequests, setOdRequests] = useState([]);
 
   const [previewId, setPreviewId] = useState(null); // tracks which OD letter is being previewed
 
   // Countdown timer — driven by real session.expires_at from backend
   useEffect(() => {
     let interval;
-    if (session?.expires_at) {
+    if (session?.remaining_seconds !== undefined) {
+      setSessionTimer(session.remaining_seconds);
       const tick = () => {
-        const remaining = Math.max(0, Math.floor((new Date(session.expires_at) - Date.now()) / 1000));
-        setSessionTimer(remaining);
-        if (remaining <= 0) clearInterval(interval);
+        setSessionTimer(prev => Math.max(0, prev - 1));
       };
       tick();
       interval = setInterval(tick, 1000);
     } else {
-      setSessionTimer(120);
+      setSessionTimer(1800);
     }
     return () => clearInterval(interval);
   }, [session?.expires_at]);
@@ -52,8 +47,8 @@ const TeacherDashboard = () => {
 
   const pendingCount = odRequests.filter(r => r.status === 'pending').length;
   const markedCount = markedStudents?.length || 0;
-  const totalStudents = 64;
-  const timerPct = sessionTimer > 0 ? (sessionTimer / 120) * 100 : 0;
+  const totalStudents = 0; // Replace with actual student count from DB
+  const timerPct = sessionTimer > 0 ? (sessionTimer / 1800) * 100 : 0;
   const timerColor = sessionTimer > 60 ? '#10B981' : sessionTimer > 30 ? '#F59E0B' : '#EF4444';
 
   return (
@@ -76,7 +71,9 @@ const TeacherDashboard = () => {
                 <span style={{ fontWeight: 700, fontSize: '1rem' }}>{user?.name}</span>
                 <span className="badge badge-primary" style={{ fontSize: '0.7rem' }}>Teacher</span>
               </div>
-              <p style={{ fontSize: '0.75rem', color: 'var(--text-sub)', marginTop: '1px' }}>Computer Networks · CS304</p>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-sub)', marginTop: '1px' }}>
+                {process.env.NEXT_PUBLIC_COURSE_NAME} · {process.env.NEXT_PUBLIC_COURSE_CODE}
+              </p>
             </div>
           </div>
 
@@ -101,7 +98,7 @@ const TeacherDashboard = () => {
           <div className="stat-card">
             <span className="stat-label">Total Students</span>
             <span className="stat-value" style={{ color: 'var(--text-main)' }}>{totalStudents}</span>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-sub)' }}>Enrolled in CS304</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-sub)' }}>Enrolled in {process.env.NEXT_PUBLIC_COURSE_CODE}</span>
           </div>
           <div className="stat-card">
             <span className="stat-label">Marked Present</span>
@@ -164,7 +161,7 @@ const TeacherDashboard = () => {
                     </div>
                   )}
                   <button className="btn btn-primary" style={{ padding: '14px 40px', fontSize: '1rem' }}
-                    onClick={() => startSession(2)}
+                    onClick={() => startSession(30)}
                     disabled={loading}>
                     {loading ? 'Starting...' : <><ScanLine size={18} /> Start Attendance</>}
                   </button>
@@ -228,7 +225,7 @@ const TeacherDashboard = () => {
                       </div>
                       <div>
                         <span style={{ color: 'var(--text-sub)', fontSize: '0.75rem', display: 'block', marginBottom: '2px' }}>Lab Network</span>
-                        <span style={{ color: 'var(--text-main)', fontWeight: 500 }}>192.168.1.x</span>
+                        <span style={{ color: 'var(--text-main)', fontWeight: 500 }}>{process.env.NEXT_PUBLIC_LAB_IP_RANGE}</span>
                       </div>
                       <div>
                         <span style={{ color: 'var(--text-sub)', fontSize: '0.75rem', display: 'block', marginBottom: '2px' }}>QR Refresh</span>
@@ -238,7 +235,7 @@ const TeacherDashboard = () => {
                   </div>
 
                   <p style={{ fontSize: '0.8125rem', color: 'var(--text-sub)', textAlign: 'center' }}>
-                    The session will automatically close after 2 minutes. Students present their QR at the kiosk.
+                    The session will automatically close after 30 minutes. Students present their QR at the kiosk.
                   </p>
                 </>
               )}

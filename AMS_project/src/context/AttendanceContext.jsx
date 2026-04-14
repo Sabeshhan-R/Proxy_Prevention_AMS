@@ -6,7 +6,7 @@ import { useAuth } from './AuthContext';
 const AttendanceContext = createContext();
 export const useAttendance = () => useContext(AttendanceContext);
 
-const LAB_ID = 'LAB-01'; // In production, derive from env or network config
+const LAB_ID = process.env.NEXT_PUBLIC_LAB_ID || 'LAB-01';
 
 export const AttendanceProvider = ({ children }) => {
   const { user } = useAuth();
@@ -33,12 +33,13 @@ export const AttendanceProvider = ({ children }) => {
         setSession(prev => {
           // Avoid unnecessary re-renders if session_id hasn't changed
           if (prev?.id === data.session_id) return prev;
-          return {
-            id: data.session_id,
-            expires_at: data.expires_at,
-            lab_id: data.lab_id,
-            teacher_name: data.teacher_name,
-          };
+            return {
+              id: data.session_id,
+              expires_at: data.expires_at,
+              lab_id: data.lab_id,
+              teacher_name: data.teacher_name,
+              remaining_seconds: data.remaining_seconds,
+            };
         });
       } else {
         setSession(null);
@@ -68,7 +69,7 @@ export const AttendanceProvider = ({ children }) => {
   }, [user, syncSession]);
 
   // ── Teacher: start session ──────────────────────────────────────────────
-  const startSession = useCallback(async (expires_in_minutes = 2) => {
+  const startSession = useCallback(async (expires_in_minutes = 30) => {
     if (!user || user.role !== 'teacher') return;
     setLoading(true);
     setSessionError(null);
@@ -91,6 +92,7 @@ export const AttendanceProvider = ({ children }) => {
         expires_at: data.expires_at,
         lab_id: LAB_ID,
         teacher_name: user.name,
+        remaining_seconds: data.remaining_seconds,
       });
       setMarkedStudents([]);
     } catch (err) {

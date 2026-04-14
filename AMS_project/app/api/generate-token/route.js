@@ -35,12 +35,10 @@ export async function POST(req) {
     const LAB_PUBLIC_IP = process.env.LAB_STATIC_IP || 'unknown'; 
     const isInLabNetwork = isLocalhost || (remoteIp === LAB_PUBLIC_IP);
 
-    // If you want to allow a range (e.g., 192.168.x.x), you'd need the server to be inside the lab.
-    // For this implementation, we'll allow an environment override.
+
     const ALLOW_ALL_IPS = process.env.ALLOW_ALL_IPS === 'true';
 
     if (!isInLabNetwork && !ALLOW_ALL_IPS) {
-      console.warn(`[Blocked] Unauthorized network access attempt: ${remoteIp}`);
       return NextResponse.json({
         error: 'Unauthorized Network. You must be on the Lab PC network to access attendance.',
         client_ip: remoteIp
@@ -63,23 +61,27 @@ export async function POST(req) {
 
     const now = new Date();
 
-    // ── Validate session ─────────────────────────────────────────────────────
+
+    // ── Validate session — let the DB do the time comparison ─────────────────
+    // Using .gt('expires_at', now.toISOString()) means PostgreSQL compares
+    // timestamps in the same timezone context, avoiding JS offset mismatches.
+=======
     const { data: session, error: sessionError } = await supabase
       .from('session')
       .select('session_id, is_active, expires_at')
       .eq('session_id', session_id)
+
+      .eq('is_active', true)
+      .gt('expires_at', now.toISOString())
+=======
+
       .maybeSingle();
 
     if (sessionError) throw sessionError;
     if (!session) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
-    if (!session.is_active) {
-      return NextResponse.json({ error: 'Session is no longer active' }, { status: 403 });
-    }
-    if (now >= new Date(session.expires_at)) {
-      return NextResponse.json({ error: 'Session has expired' }, { status: 403 });
-    }
+
 
     // ── Validate student ─────────────────────────────────────────────────────
     const { data: student, error: studentError } = await supabase

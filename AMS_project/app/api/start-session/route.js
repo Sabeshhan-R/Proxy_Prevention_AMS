@@ -13,7 +13,7 @@ import { supabase } from '@/lib/supabase';
 export async function POST(req) {
   try {
     const body = await req.json();
-    const { teacher_id, lab_id, expires_in_minutes = 2 } = body;
+    const { teacher_id, lab_id, expires_in_minutes = 30 } = body;
 
     // ── Validation ──────────────────────────────────────────────────────────
     if (!teacher_id || !lab_id) {
@@ -69,6 +69,7 @@ export async function POST(req) {
       session_id: session.session_id,
       expires_at: session.expires_at,
       lab_id: session.lab_id,
+      remaining_seconds: expires_in_minutes * 60
     });
 
   } catch (error) {
