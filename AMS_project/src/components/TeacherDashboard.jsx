@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useAttendance } from '../context/AttendanceContext';
 import { LogOut, ScanLine, ClipboardList, CheckSquare, UserCheck, Users, Clock, Shield, FileText, Eye, EyeOff } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
 const TeacherDashboard = () => {
   const { user, logout } = useAuth();
@@ -11,10 +12,61 @@ const TeacherDashboard = () => {
   const [activeTab, setActiveTab] = useState('attendance');
   const [sessionTimer, setSessionTimer] = useState(1800); // 30 minutes countdown (1800s)
 
-  // Real OD Requests (to be fetched from API)
+  const [totalStudents, setTotalStudents] = useState(0);
   const [odRequests, setOdRequests] = useState([]);
-
   const [previewId, setPreviewId] = useState(null); // tracks which OD letter is being previewed
+
+  // Fetch real data from Supabase
+  const fetchData = async () => {
+    // 1. Fetch Students Count
+    const { count } = await supabase.from('student').select('*', { count: 'exact', head: true });
+    setTotalStudents(count || 0);
+
+    // 2. Fetch OD Requests
+    const { data: odData, error: odError } = await supabase
+      .from('od_request')
+      .select(`
+        *,
+        student:student_id ( name, reg_no )
+      `)
+      .order('applied_at', { ascending: false });
+
+    if (!odError && odData) {
+      // Map DB schema to UI format
+      const mapped = await Promise.all(odData.map(async (req) => {
+        let signedUrl = null;
+        
+        if (req.document_path && !req.document_path.startsWith('error_')) {
+          const { data, error } = await supabase.storage
+            .from('od_documents')
+            .createSignedUrl(req.document_path, 3600); // 1-hour access for the session
+          
+          if (!error && data) {
+            signedUrl = data.signedUrl;
+          } else {
+            // Fallback for debugging if signed URL fails
+            signedUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/od_documents/${req.document_path}`;
+          }
+        }
+
+        return {
+          id: req.od_id,
+          studentName: req.student?.name || 'Unknown',
+          rollNo: req.student?.reg_no || '—',
+          reason: req.subject,
+          date: req.from_date === req.to_date ? req.from_date : `${req.from_date} to ${req.to_date}`,
+          status: req.status.toLowerCase(),
+          letterUrl: signedUrl,
+          letterName: req.document_path ? req.document_path.split('/').pop() : 'No file'
+        };
+      }));
+      setOdRequests(mapped);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
 
   // Countdown timer — driven by real session.expires_at from backend
   useEffect(() => {
@@ -30,10 +82,20 @@ const TeacherDashboard = () => {
       setSessionTimer(1800);
     }
     return () => clearInterval(interval);
-  }, [session?.expires_at]);
+  }, [session?.id]); // Depend on ID change to reset timer
 
-  const handleOdAction = (id, action) => {
-    setOdRequests(reqs => reqs.map(r => r.id === id ? { ...r, status: action } : r));
+  const handleOdAction = async (id, action) => {
+    // DB status is capitalized in Enum: 'Approved', 'Rejected'
+    const dbStatus = action.charAt(0).toUpperCase() + action.slice(1);
+    
+    const { error } = await supabase
+      .from('od_request')
+      .update({ status: dbStatus })
+      .eq('od_id', id);
+
+    if (!error) {
+      setOdRequests(reqs => reqs.map(r => r.id === id ? { ...r, status: action } : r));
+    }
   };
 
   const [missedRoll, setMissedRoll] = useState('');
@@ -47,7 +109,6 @@ const TeacherDashboard = () => {
 
   const pendingCount = odRequests.filter(r => r.status === 'pending').length;
   const markedCount = markedStudents?.length || 0;
-  const totalStudents = 0; // Replace with actual student count from DB
   const timerPct = sessionTimer > 0 ? (sessionTimer / 1800) * 100 : 0;
   const timerColor = sessionTimer > 60 ? '#10B981' : sessionTimer > 30 ? '#F59E0B' : '#EF4444';
 
