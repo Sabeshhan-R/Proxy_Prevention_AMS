@@ -40,12 +40,15 @@ export async function GET(req) {
       return NextResponse.json({ active: false });
     }
 
+    const remainingSeconds = Math.max(0, Math.floor((new Date(session.expires_at) - new Date()) / 1000));
+    
     return NextResponse.json({
       active: true,
       session_id: session.session_id,
       lab_id: session.lab_id,
       expires_at: session.expires_at,
       teacher_name: session.teacher?.name,
+      remaining_seconds: remainingSeconds
     });
 
   } catch (error) {
